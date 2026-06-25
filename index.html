@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>All Image Tool</title>
-  <meta name="description" content="Remove backgrounds, extract text (OCR), and convert image formats — all in your browser." />
+  <meta name="description" content="Remove backgrounds, OCR text, convert, resize, crop, compress, watermark and more — all in your browser." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -22,24 +22,11 @@
         </div>
       </div>
 
-      <nav class="features" id="features">
-        <button class="feature" data-feature="removebg">
-          <span class="ic">✂️</span>
-          <span class="ftxt"><b>Remove Background</b><small>Make the background transparent</small></span>
-        </button>
-        <button class="feature" data-feature="ocr">
-          <span class="ic">🔤</span>
-          <span class="ftxt"><b>Extract Text (OCR)</b><small>Pull text out of an image</small></span>
-        </button>
-        <button class="feature" data-feature="convert">
-          <span class="ic">🔁</span>
-          <span class="ftxt"><b>Convert Format</b><small>Any format → PNG / JPG / WEBP</small></span>
-        </button>
-      </nav>
+      <nav class="features" id="features"><!-- built by JS from the feature registry --></nav>
 
       <div class="hint">
         <p>Everything runs <b>in your browser</b> — your images never leave your device.</p>
-        <p class="muted">Pick a feature, then upload an image.</p>
+        <p class="muted">Upload an image first (or paste with <b>Ctrl/⌘+V</b>), then choose a feature.</p>
       </div>
     </aside>
 
@@ -48,12 +35,12 @@
       <!-- PAGE 1 — Upload -->
       <section class="page" id="page-upload">
         <div class="dropzone" id="dropzone">
-          <input type="file" id="fileInput" accept="image/*,.heic,.heif" hidden />
-          <div class="dz-inner">
+          <input type="file" id="fileInput" accept="image/*,.heic,.heif,.jfif,.avif" multiple hidden />
+          <div class="dz-inner" id="dzInner">
             <div class="dz-icon">⬆️</div>
             <h2>Drop an image here</h2>
-            <p>or <button class="link" id="browseBtn">browse your files</button></p>
-            <p class="muted" id="dzFeature">First, pick a feature on the left</p>
+            <p>or <button class="link" id="browseBtn">browse your files</button> · or paste (Ctrl/⌘+V)</p>
+            <p class="muted" id="dzFeature">Upload an image, then pick a feature on the left</p>
           </div>
         </div>
       </section>
@@ -83,7 +70,7 @@
           <h2 id="resultTitle">Done</h2>
           <p class="muted" id="resultMeta"></p>
           <div class="result-body" id="resultBody"><!-- image or text --></div>
-          <button class="primary" id="downloadBtn">⬇ Download</button>
+          <div class="actions" id="resultActions"><!-- download / copy / adjust --></div>
         </div>
 
         <div class="error hidden" id="errorBox">
@@ -94,6 +81,8 @@
       </section>
     </main>
   </div>
+
+  <div class="toasts" id="toasts"></div>
 
   <script type="module" src="assets/app.js"></script>
 </body>

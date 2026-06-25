@@ -12,17 +12,29 @@ no installs, no accounts, and **your images never leave your device**.
 
 | Feature | What it does | Powered by |
 | --- | --- | --- |
-| ✂️ **Remove Background** | Detects the subject and erases the background, giving a transparent PNG | [`@imgly/background-removal`](https://github.com/imgly/background-removal-js) (WASM/ONNX) |
-| 🔤 **Extract Text (OCR)** | Reads text out of an image; copy it or save as `.txt` (12 languages) | [`tesseract.js`](https://github.com/naptha/tesseract.js) |
-| 🔁 **Convert Format** | Convert any image to **PNG / JPG / WEBP**, with a quality slider | Browser Canvas + [`heic2any`](https://github.com/alexcorvi/heic2any) for HEIC input |
+| ✂️ **Remove / Replace Background** | Cut out the subject; optionally **box the object to keep**, then leave the background transparent or replace it with a color or another image | [`@imgly/background-removal`](https://github.com/imgly/background-removal-js) (WASM/ONNX) |
+| 🔤 **Extract Text (OCR)** | Read text from an image; copy it or save as `.txt` (12 languages) | [`tesseract.js`](https://github.com/naptha/tesseract.js) |
+| 🔁 **Convert Format** | Convert to **PNG / JPG / JPEG / JFIF / WEBP / AVIF**, with a quality slider | Browser Canvas + [`heic2any`](https://github.com/alexcorvi/heic2any) for HEIC input |
+| 📄 **Images → PDF** | Combine one or many images into a single PDF (fit-to-image / A4 / Letter) | [`jsPDF`](https://github.com/parallax/jsPDF) |
+| 📐 **Resize & Rotate** | Resize (with aspect lock), rotate in 90° steps, flip horizontal/vertical | Canvas |
+| 🔲 **Crop** | Drag a crop box with optional fixed ratios (1:1, 16:9, 4:3, …) | Canvas |
+| 🗜️ **Compress** | Shrink file size by quality **or** target KB; optional max-dimension limit | Canvas |
+| 🟦 **Pixelate / Blur** | Censor a selected region (faces, plates, sensitive text) | Canvas |
+| 💧 **Add Watermark** | Text overlay with size, opacity, color, 9-point position, or full tiling | Canvas |
+| 🧽 **Remove Watermark** | Best-effort inpainting of a boxed region (good on smooth backgrounds) | Canvas (diffusion inpaint) |
+| 🛈 **EXIF / Metadata** | View embedded camera/date/GPS metadata and download a stripped copy | [`exifr`](https://github.com/MikeKovarik/exifr) |
 
 ## How it works
 
-1. **Choose a feature** from the left sidebar.
-2. **Upload an image** — drag & drop or browse.
-3. **Review & confirm** any settings on the next screen (target format, OCR language, etc.).
+1. **Upload an image** — drag & drop, browse, or **paste with `Ctrl/⌘+V`** (some features accept multiple).
+2. **Choose a feature** from the left sidebar.
+3. **Review & arrange** on the confirm screen — set options, or drag a box on the image
+   (to keep an object, crop, censor, or mark a watermark).
 4. The tool **processes the image** right in your browser.
-5. **Download** the result.
+5. **Download**, **copy to clipboard**, or **⚙ Adjust & re-run** with new settings.
+
+**Quality-of-life:** before/after compare slider, copy-to-clipboard (text & images),
+paste-to-upload, toast notifications, and keyboard shortcuts (**Enter** to run, **Esc** to go back).
 
 Everything is **100% client-side**. There is no backend — that's exactly why it can
 be hosted for free as a static site and run with full privacy.
@@ -56,11 +68,14 @@ all-img-tool/
 ## Notes & limits
 
 - **First run of a feature downloads its model/data** (background-removal model ≈ 40 MB,
-  OCR language data a few MB). Subsequent runs are cached by the browser.
+  OCR language data a few MB, PDF/EXIF engines a few KB). Subsequent runs are cached.
 - Heavy operations run on your CPU, so very large images take longer on low-end devices.
-- Format conversion outputs the web-native formats browsers can encode (PNG/JPG/WEBP);
-  it can *read* far more, including HEIC/HEIF.
-- A processing-friendly browser (recent Chrome, Edge, or Firefox) is recommended.
+- Conversion outputs the formats the browser can *encode* (PNG/JPG/JFIF/WEBP/AVIF — AVIF
+  encoding needs a recent Chromium-based browser); it can *read* far more, including HEIC/HEIF.
+- **Watermark removal is best-effort.** True removal is an AI inpainting problem; a fully
+  client-side tool can't match a server model. It works well on smooth/simple backgrounds
+  and may smudge on busy textures or large marks.
+- A modern browser (recent Chrome, Edge, or Firefox) is recommended.
 
 ## License
 

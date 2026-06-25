@@ -47,7 +47,9 @@ body {
 .brand h1 { font-size: 17px; font-weight: 700; }
 .brand p { font-size: 12px; color: var(--muted); }
 
-.features { display: flex; flex-direction: column; gap: 10px; }
+.features { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding-right: 4px; }
+.grouplabel { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); margin: 12px 2px 2px; }
+.grouplabel:first-child { margin-top: 0; }
 .feature {
   display: flex; gap: 12px; align-items: center;
   text-align: left;
@@ -189,6 +191,61 @@ input[type="range"].field { padding: 0; accent-color: var(--accent); }
 }
 .error h2 { color: var(--bad); }
 .error p { color: var(--muted); margin: 10px 0 18px; }
+
+/* upload preview + pulse */
+.up-preview {
+  max-width: 320px; max-height: 240px; object-fit: contain; border-radius: 12px;
+  margin: 0 auto 14px; display: block;
+  background: repeating-conic-gradient(#202734 0% 25%, #1a212c 0% 50%) 50% / 20px 20px;
+}
+.dropzone.pulse { animation: pulse .6s ease; }
+@keyframes pulse { 0%,100% { border-color:#33405a; } 50% { border-color: var(--bad); background: rgba(248,81,73,.07); } }
+
+/* inline checkboxes / number inputs in options */
+.options-card label.inline { display: flex; align-items: center; gap: 8px; color: var(--text); margin-top: 12px; }
+.options-card label.inline input[type="number"] {
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+  border-radius: 8px; padding: 5px 8px; font: inherit;
+}
+
+/* PDF thumbnails */
+.thumbs { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 10px; }
+.thumb { position: relative; border-radius: 10px; overflow: hidden; border: 1px solid var(--line); aspect-ratio: 1; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.thumb .tnum { position: absolute; left: 6px; top: 6px; background: rgba(0,0,0,.65); border-radius: 6px; padding: 1px 7px; font-size: 12px; }
+.thumb .trm { position: absolute; right: 4px; top: 4px; width: 22px; height: 22px; border: none; border-radius: 6px; background: rgba(0,0,0,.6); color: #fff; cursor: pointer; }
+.thumb .trm:hover { background: var(--bad); }
+
+/* result actions row */
+.actions { display: flex; flex-wrap: wrap; gap: 10px; }
+
+/* before/after compare slider */
+.cmp { position: relative; display: inline-block; max-width: 100%; line-height: 0; border-radius: 12px; overflow: hidden; user-select: none; }
+.cmp img { display: block; max-width: 100%; max-height: 460px; }
+.cmp-after { background: repeating-conic-gradient(#202734 0% 25%, #1a212c 0% 50%) 50% / 20px 20px; }
+.cmp-before { position: absolute; inset: 0; width: 50%; overflow: hidden; }
+.cmp-before img { height: 100%; max-height: 460px; width: auto; }
+.cmp-handle { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: #fff; pointer-events: none; box-shadow: 0 0 6px rgba(0,0,0,.6); }
+.cmp-range { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: ew-resize; margin: 0; }
+.cmp-tagl, .cmp-tagr { position: absolute; bottom: 8px; font-size: 11px; background: rgba(0,0,0,.6); padding: 2px 8px; border-radius: 6px; line-height: 1.4; }
+.cmp-tagl { left: 8px; } .cmp-tagr { right: 8px; }
+
+/* file chip (PDF / cleaned download) + EXIF table */
+.filechip { display: inline-block; padding: 18px 22px; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; font-size: 15px; }
+table.exif { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.exif td { border-bottom: 1px solid var(--line); padding: 7px 8px; vertical-align: top; }
+table.exif td:first-child { color: var(--muted); width: 42%; }
+
+/* toasts */
+.toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 10px; z-index: 50; }
+.toast {
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+  padding: 11px 16px; border-radius: 10px; box-shadow: var(--shadow);
+  font-size: 13.5px; opacity: 0; transform: translateY(8px); transition: opacity .25s, transform .25s; max-width: 320px;
+}
+.toast.in { opacity: 1; transform: translateY(0); }
+.toast.good { border-color: rgba(63,185,80,.5); }
+.toast.bad { border-color: rgba(248,81,73,.5); }
 
 @media (max-width: 820px) {
   .app { flex-direction: column; }

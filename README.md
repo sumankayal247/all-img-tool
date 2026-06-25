@@ -12,7 +12,7 @@ no installs, no accounts, and **your images never leave your device**.
 
 | Feature | What it does | Powered by |
 | --- | --- | --- |
-| ✂️ **Remove / Replace Background** | Cut out the subject; optionally **box the object to keep**, then leave the background transparent or replace it with a color or another image | [`@imgly/background-removal`](https://github.com/imgly/background-removal-js) (WASM/ONNX) |
+| ✂️ **Remove / Replace Background** | Automatically cut out the subject, then leave the background transparent or replace it with a color or another image | [`@imgly/background-removal`](https://github.com/imgly/background-removal-js) (WASM/ONNX) |
 | 🔤 **Extract Text (OCR)** | Read text from an image; copy it or save as `.txt` (12 languages) | [`tesseract.js`](https://github.com/naptha/tesseract.js) |
 | 🔁 **Convert Format** | Convert to **PNG / JPG / JPEG / JFIF / WEBP / AVIF**, with a quality slider | Browser Canvas + [`heic2any`](https://github.com/alexcorvi/heic2any) for HEIC input |
 | 📄 **Images → PDF** | Combine one or many images into a single PDF (fit-to-image / A4 / Letter) | [`jsPDF`](https://github.com/parallax/jsPDF) |

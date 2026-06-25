@@ -64,7 +64,7 @@ const RATIOS = { Free: null, "1:1": 1, "16:9": 16 / 9, "4:3": 4 / 3, "3:2": 3 / 
 const POSITIONS = ["top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"];
 
 const FEATURES = {
-  removebg: { group: "Background", icon: "✂️", label: "Remove / Replace BG", sub: "Cut out the subject", runLabel: "Process", selector: { mode: "keep", required: false }, build: optRemoveBg, run: runRemoveBg },
+  removebg: { group: "Background", icon: "✂️", label: "Remove / Replace BG", sub: "Cut out the subject", runLabel: "Process", build: optRemoveBg, run: runRemoveBg },
   ocr:      { group: "Text",       icon: "🔤", label: "Extract Text (OCR)", sub: "Pull text from image", runLabel: "Extract Text", build: optOcr, run: runOcr },
   convert:  { group: "Convert",    icon: "🔁", label: "Convert Format",     sub: "PNG · JPG · WEBP",      runLabel: "Convert", build: optConvert, run: runConvert },
   topdf:    { group: "Convert",    icon: "📄", label: "Images → PDF",        sub: "Combine into a PDF",    runLabel: "Build PDF", multi: true, build: optPdf, run: runPdf },
@@ -292,8 +292,8 @@ async function run() {
 // ═══════════════════════════ OPTION PANELS ═══════════════════════════
 function optRemoveBg(card) {
   card.innerHTML = `
-    <h3>Select the object to keep <span class="muted">(optional)</span></h3>
-    <p class="note"><b>Drag a box</b> around the object to keep — everything outside it is removed. Leave empty to keep whatever the AI detects.</p>
+    <h3>Remove / Replace Background</h3>
+    <p class="note">The subject is detected and the background removed <b>automatically</b>.</p>
     <label>New background</label>
     <select class="field" id="bgMode"><option value="transparent">Transparent (PNG)</option><option value="color">Solid color</option><option value="image">Another image</option></select>
     <div id="bgColorRow" style="display:none"><label>Color</label><input class="field" type="color" id="bgColor" value="#ffffff" style="height:42px" /></div>
@@ -401,7 +401,6 @@ async function runRemoveBg() {
     progress: (key, cur, total) => { const pct = total ? Math.round((cur / total) * 100) : 0; setProgress(pct, key.startsWith("fetch") ? `Downloading model… ${pct}%` : `Processing… ${pct}%`); },
   };
   let blob = await removeBackground(state.file, cfg);
-  if (state.selection) { setProgress(null, "Keeping selected object…"); blob = await cropAlpha(blob, state.selection); }
 
   const mode = $("bgMode").value;
   if (mode !== "transparent") {
@@ -690,16 +689,6 @@ function drawCover(ctx, bm, W, H) {
   const scale = Math.max(W / bm.width, H / bm.height);
   const dw = bm.width * scale, dh = bm.height * scale;
   ctx.drawImage(bm, (W - dw) / 2, (H - dh) / 2, dw, dh);
-}
-
-async function cropAlpha(blob, sel) {
-  const bm = await loadBitmap(blob);
-  const w = bm.width, h = bm.height;
-  const c = el("canvas"); c.width = w; c.height = h;
-  const ctx = c.getContext("2d"); ctx.drawImage(bm, 0, 0);
-  const sx = Math.round(sel.x * w), sy = Math.round(sel.y * h), sw = Math.round(sel.w * w), sh = Math.round(sel.h * h);
-  ctx.clearRect(0, 0, w, sy); ctx.clearRect(0, sy + sh, w, h - (sy + sh)); ctx.clearRect(0, sy, sx, sh); ctx.clearRect(sx + sw, sy, w - (sx + sw), sh);
-  return await canvasBlob(c, "image/png");
 }
 
 // Iterative diffusion inpaint of a rectangular region (best-effort).

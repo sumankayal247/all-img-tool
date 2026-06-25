@@ -21,13 +21,14 @@ no installs, no accounts, and **your images never leave your device**.
 | 🗜️ **Compress** | Shrink file size by quality **or** target KB; optional max-dimension limit | Canvas |
 | 🟦 **Pixelate / Blur** | Censor a selected region (faces, plates, sensitive text) | Canvas |
 | 💧 **Add Watermark** | Text overlay with size, opacity, color, 9-point position, or full tiling | Canvas |
-| 🧽 **Remove Watermark** | Best-effort inpainting of a boxed region (good on smooth backgrounds) | Canvas (diffusion inpaint) |
 | 🛈 **EXIF / Metadata** | View embedded camera/date/GPS metadata and download a stripped copy | [`exifr`](https://github.com/MikeKovarik/exifr) |
 | { } **Formatter** | Paste messy **HTML or JSON**, auto-detect the type and beautify it, with copy & clear (no image needed) | [`js-beautify`](https://github.com/beautifier/js-beautify) |
 
 ## How it works
 
-1. **Upload an image** — drag & drop, browse, or **paste with `Ctrl/⌘+V`** (some features accept multiple).
+1. **Upload one or many images** — drag & drop, browse, or **paste with `Ctrl/⌘+V`**.
+   Most features **batch-process** every image and hand you a **ZIP**; the app tells you
+   up front when a feature (Crop, Pixelate) only works on a single image.
 2. **Choose a feature** from the left sidebar.
 3. **Review & arrange** on the confirm screen — set options, or drag a box on the image
    (to keep an object, crop, censor, or mark a watermark).
@@ -73,9 +74,9 @@ all-img-tool/
 - Heavy operations run on your CPU, so very large images take longer on low-end devices.
 - Conversion outputs the formats the browser can *encode* (PNG/JPG/JFIF/WEBP/AVIF — AVIF
   encoding needs a recent Chromium-based browser); it can *read* far more, including HEIC/HEIF.
-- **Watermark removal is best-effort.** True removal is an AI inpainting problem; a fully
-  client-side tool can't match a server model. It works well on smooth/simple backgrounds
-  and may smudge on busy textures or large marks.
+- **Batch:** upload many images and most features process them all into a single ZIP.
+  Crop and Pixelate/Blur are single-image only (they need a region drawn on one preview) —
+  the app warns you and uses the first image. Images → PDF combines all into one file.
 - A modern browser (recent Chrome, Edge, or Firefox) is recommended.
 
 ## License

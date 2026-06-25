@@ -18,6 +18,7 @@ const CDN = {
   heic: "0.0.4",
   jspdf: "2.5.1",
   exifr: "7.1.3",
+  jszip: "3.10.1",
 };
 
 // ─────────────────────────── tiny DOM helpers ───────────────────────────
@@ -63,18 +64,19 @@ const CONVERT_FORMATS = {
 const RATIOS = { Free: null, "1:1": 1, "16:9": 16 / 9, "4:3": 4 / 3, "3:2": 3 / 2, "9:16": 9 / 16 };
 const POSITIONS = ["top-left", "top", "top-right", "left", "center", "right", "bottom-left", "bottom", "bottom-right"];
 
+// each: per-image processor (auto-batches to a ZIP when many are uploaded)
+// run : custom handler (PDF combines all; crop/pixelate are single-image only)
 const FEATURES = {
-  removebg: { group: "Background", icon: "✂️", label: "Remove / Replace BG", sub: "Cut out the subject", runLabel: "Process", build: optRemoveBg, run: runRemoveBg },
-  ocr:      { group: "Text",       icon: "🔤", label: "Extract Text (OCR)", sub: "Pull text from image", runLabel: "Extract Text", build: optOcr, run: runOcr },
-  convert:  { group: "Convert",    icon: "🔁", label: "Convert Format",     sub: "PNG · JPG · WEBP",      runLabel: "Convert", build: optConvert, run: runConvert },
+  removebg: { group: "Background", icon: "✂️", label: "Remove / Replace BG", sub: "Cut out the subject", runLabel: "Process", build: optRemoveBg, each: eachRemoveBg, compareSingle: true },
+  ocr:      { group: "Text",       icon: "🔤", label: "Extract Text (OCR)", sub: "Pull text from image", runLabel: "Extract Text", build: optOcr, each: eachOcr },
+  convert:  { group: "Convert",    icon: "🔁", label: "Convert Format",     sub: "PNG · JPG · WEBP",      runLabel: "Convert", build: optConvert, each: eachConvert },
   topdf:    { group: "Convert",    icon: "📄", label: "Images → PDF",        sub: "Combine into a PDF",    runLabel: "Build PDF", multi: true, build: optPdf, run: runPdf },
-  transform:{ group: "Edit",       icon: "📐", label: "Resize & Rotate",     sub: "Resize, rotate, flip",  runLabel: "Apply", build: optTransform, run: runTransform },
-  crop:     { group: "Edit",       icon: "🔲", label: "Crop",                sub: "Drag a crop box",       runLabel: "Crop", selector: { mode: "crop", required: true }, build: optCrop, run: runCrop },
-  compress: { group: "Edit",       icon: "🗜️", label: "Compress",            sub: "Shrink file size",      runLabel: "Compress", build: optCompress, run: runCompress },
-  pixelate: { group: "Cleanup",    icon: "🟦", label: "Pixelate / Blur",     sub: "Censor a region",       runLabel: "Apply", selector: { mode: "region", required: true }, build: optPixelate, run: runPixelate },
-  watermark:{ group: "Cleanup",    icon: "💧", label: "Add Watermark",       sub: "Text overlay",          runLabel: "Add Watermark", build: optWatermark, run: runWatermark },
-  wmremove: { group: "Cleanup",    icon: "🧽", label: "Remove Watermark",    sub: "Inpaint a region",      runLabel: "Remove", selector: { mode: "region", required: true }, build: optWmRemove, run: runWmRemove },
-  exif:     { group: "Cleanup",    icon: "🛈",  label: "EXIF / Metadata",     sub: "View & strip metadata", runLabel: "Read & Clean", build: optExif, run: runExif },
+  transform:{ group: "Edit",       icon: "📐", label: "Resize & Rotate",     sub: "Resize, rotate, flip",  runLabel: "Apply", build: optTransform, each: eachTransform },
+  crop:     { group: "Edit",       icon: "🔲", label: "Crop",                sub: "Drag a crop box",       runLabel: "Crop", single: true, selector: { mode: "crop", required: true }, build: optCrop, run: runCrop },
+  compress: { group: "Edit",       icon: "🗜️", label: "Compress",            sub: "Shrink file size",      runLabel: "Compress", build: optCompress, each: eachCompress },
+  pixelate: { group: "Cleanup",    icon: "🟦", label: "Pixelate / Blur",     sub: "Censor a region",       runLabel: "Apply", single: true, selector: { mode: "region", required: true }, build: optPixelate, run: runPixelate },
+  watermark:{ group: "Cleanup",    icon: "💧", label: "Add Watermark",       sub: "Text overlay",          runLabel: "Add Watermark", build: optWatermark, each: eachWatermark },
+  exif:     { group: "Cleanup",    icon: "🛈",  label: "EXIF / Metadata",     sub: "View & strip metadata", runLabel: "Read & Clean", build: optExif, run: runExif, each: eachExif },
   formatter:{ group: "Code",       icon: "{ }", label: "Formatter",           sub: "Beautify HTML / JSON",  standalone: true, open: openFormatter },
 };
 
@@ -115,7 +117,12 @@ $("features").addEventListener("click", (e) => {
   document.querySelectorAll(".feature").forEach((f) => f.classList.remove("active"));
   btn.classList.add("active");
   state.feature = btn.dataset.feature;
-  if (!def.multi && state.files.length > 1) toast("Using the first uploaded image for this feature.", "");
+  const n = state.files.length;
+  if (n > 1) {
+    if (def.single) toast(`${def.label} handles one image at a time — using the first of your ${n}.`, "bad");
+    else if (def.multi) toast(`All ${n} images will be combined into the PDF.`, "");
+    else toast(`All ${n} images will be processed — you'll get a ZIP.`, "");
+  }
   buildConfirm();
   goto("confirm");
 });
@@ -197,6 +204,16 @@ function buildConfirm() {
   else { renderPreview(def); }
 
   def.build($("optionsCard"));
+  const banner = batchNotice(def);
+  if (banner) $("optionsCard").insertAdjacentHTML("afterbegin", banner);
+}
+
+function batchNotice(def) {
+  const n = state.files.length;
+  if (n <= 1) return "";
+  if (def.single) return `<div class="banner warn">⚠️ <b>${def.label}</b> works on one image at a time. Only the <b>first</b> of your ${n} images will be used.</div>`;
+  if (def.multi) return `<div class="banner">📄 All <b>${n}</b> images will be combined into one PDF.</div>`;
+  return `<div class="banner">🗂️ All <b>${n}</b> images will be processed and downloaded together as a <b>ZIP</b>.</div>`;
 }
 
 function renderPreview(def) {
@@ -287,7 +304,10 @@ async function run() {
   hide($("resultBox")); hide($("errorBox")); show($("working"));
   setProgress(null, "Preparing…");
   try {
-    await def.run();
+    if (def.multi) await def.run();                                   // PDF: all images -> one file
+    else if (def.each && state.files.length > 1 && !def.single) await batchRun(def); // many -> ZIP
+    else if (def.run) await def.run();                               // crop / pixelate (single-image)
+    else await renderSingle(await def.each(state.file), def);        // single image
   } catch (err) {
     console.error(err);
     hide($("working"));
@@ -296,6 +316,38 @@ async function run() {
     return;
   }
   hide($("working")); show($("resultBox"));
+}
+
+// Process every uploaded image with the feature's per-image handler, bundle into a ZIP.
+async function batchRun(def) {
+  await ensureScript(`https://cdn.jsdelivr.net/npm/jszip@${CDN.jszip}/dist/jszip.min.js`, () => window.JSZip, "ZIP packer");
+  const zip = new window.JSZip();
+  const n = state.files.length;
+  const used = new Set();
+  for (let i = 0; i < n; i++) {
+    setProgress(Math.round((i / n) * 100), `Processing ${i + 1} of ${n}…`);
+    const r = await def.each(state.files[i], i);
+    const name = uniqueName(r.name, used);
+    zip.file(name, r.kind === "text" ? r.text : r.blob);
+  }
+  setProgress(99, "Packing ZIP…");
+  const blob = await zip.generateAsync({ type: "blob" });
+  finishFile(blob, `${state.feature}-results.zip`, `${n} files · ${prettySize(blob.size)}`,
+    `<div class="filechip">📦 ${state.feature}-results.zip — ${n} files</div>`);
+}
+
+function uniqueName(name, used) {
+  let out = name, i = 1;
+  while (used.has(out)) { out = name.replace(/(\.[^.]+)$/, `-${i++}$1`); }
+  used.add(out);
+  return out;
+}
+
+// Render a single per-image result using the right viewer for its kind.
+async function renderSingle(r, def) {
+  if (r.kind === "text") return finishText(r.text, r.name, r.meta);
+  if (r.kind === "file") return finishFile(r.blob, r.name, r.meta, r.body || `<div class="filechip">📄 ${r.name}</div>`);
+  return finishImage(r.blob, r.name, r.meta, { compare: def.compareSingle });
 }
 
 // ═══════════════════════════ OPTION PANELS ═══════════════════════════
@@ -387,29 +439,24 @@ function optWatermark(card) {
   $("wmOp").addEventListener("input", (e) => $("wov").textContent = e.target.value + "%");
 }
 
-function optWmRemove(card) {
-  card.innerHTML = `<h3>Remove Watermark <span class="muted">(best-effort)</span></h3>
-    <p class="note"><b>Drag a box</b> over the watermark. The area is reconstructed by pulling in surrounding colors (inpainting).</p>
-    <label>Smoothing passes <span class="rowval" id="wrv">balanced</span></label><input class="field" type="range" id="wrStr" min="1" max="3" value="2" />
-    <p class="note">⚠️ Works best on smooth or simple backgrounds. Busy textures or large watermarks may smudge — there's no perfect client-side removal.</p>`;
-  const labels = { 1: "light", 2: "balanced", 3: "strong" };
-  $("wrStr").addEventListener("input", (e) => $("wrv").textContent = labels[e.target.value]);
-}
-
 function optExif(card) {
   card.innerHTML = `<h3>EXIF / Metadata</h3><p class="note">Reads camera, date and GPS metadata embedded in the image, then gives you a <b>cleaned copy</b> with all metadata stripped — useful before sharing photos.</p>`;
 }
 
 // ═══════════════════════════ RUN HANDLERS ═══════════════════════════
-async function runRemoveBg() {
-  setProgress(null, "Loading background-removal model…");
-  const { removeBackground } = await import(`https://cdn.jsdelivr.net/npm/@imgly/background-removal@${CDN.imgly}/+esm`);
+let _removeBg = null;
+async function eachRemoveBg(file) {
+  if (!_removeBg) {
+    setProgress(null, "Loading background-removal model…");
+    const m = await import(`https://cdn.jsdelivr.net/npm/@imgly/background-removal@${CDN.imgly}/+esm`);
+    _removeBg = m.removeBackground;
+  }
   const cfg = {
     // Models live in the separate data package hosted on staticimgly (content-addressed chunks).
     publicPath: `https://staticimgly.com/@imgly/background-removal-data/${CDN.imgly}/dist/`,
     progress: (key, cur, total) => { const pct = total ? Math.round((cur / total) * 100) : 0; setProgress(pct, key.startsWith("fetch") ? `Downloading model… ${pct}%` : `Processing… ${pct}%`); },
   };
-  let blob = await removeBackground(state.file, cfg);
+  let blob = await _removeBg(file, cfg);
 
   const mode = $("bgMode").value;
   if (mode !== "transparent") {
@@ -424,29 +471,29 @@ async function runRemoveBg() {
       drawCover(ctx, bg, c.width, c.height);
     }
     ctx.drawImage(cut, 0, 0);
-    blob = await canvasBlob(c, mode === "transparent" ? "image/png" : "image/png");
+    blob = await canvasBlob(c, "image/png");
   }
-  await finishImage(blob, `${stem(srcName())}-bg.png`, "Background " + (mode === "transparent" ? "removed" : "replaced"), { compare: true });
+  return { kind: "image", blob, name: `${stem(file.name)}-bg.png`, meta: "Background " + (mode === "transparent" ? "removed" : "replaced") };
 }
 
-async function runOcr() {
+async function eachOcr(file) {
   const lang = $("ocrLang").value || "eng";
   setProgress(null, "Loading OCR engine…");
   await ensureScript(`https://cdn.jsdelivr.net/npm/tesseract.js@${CDN.tess}/dist/tesseract.min.js`, () => window.Tesseract, "OCR engine");
-  const input = await decodeForCanvasIfNeeded(state.file);
+  const input = await decodeForCanvasIfNeeded(file);
   const { data } = await window.Tesseract.recognize(input, lang, {
     logger: (m) => { if (m.status && typeof m.progress === "number") { const p = Math.round(m.progress * 100); setProgress(p, `${cap(m.status)}… ${p}%`); } },
   });
   const text = (data.text || "").trim();
-  finishText(text || "(no text detected)", `${stem(srcName())}.txt`, `${text ? text.split(/\s+/).length : 0} words · ${text.length} characters`);
+  return { kind: "text", text: text || "(no text detected)", name: `${stem(file.name)}.txt`, meta: `${text ? text.split(/\s+/).length : 0} words · ${text.length} characters` };
 }
 
-async function runConvert() {
+async function eachConvert(file) {
   const key = $("fmt").value, fmt = CONVERT_FORMATS[key];
   const q = (parseInt($("quality").value, 10) || 92) / 100;
-  const { canvas } = await currentCanvas(!fmt.alpha);
+  const { canvas } = await canvasFromFile(file, !fmt.alpha);
   const blob = await canvasBlob(canvas, fmt.mime, fmt.quality ? q : undefined);
-  await finishImage(blob, `${stem(srcName())}.${fmt.ext}`, `${canvas.width}×${canvas.height}px · ${key}`);
+  return { kind: "image", blob, name: `${stem(file.name)}.${fmt.ext}`, meta: `${canvas.width}×${canvas.height}px · ${key}` };
 }
 
 async function runPdf() {
@@ -482,8 +529,8 @@ async function runPdf() {
   finishFile(blob, "images.pdf", `PDF · ${state.files.length} page(s) · ${prettySize(blob.size)}`, `<div class="filechip">📄 images.pdf — ${state.files.length} page(s)</div>`);
 }
 
-async function runTransform() {
-  const { canvas: src } = await currentCanvas(false);
+async function eachTransform(file) {
+  const { canvas: src } = await canvasFromFile(file, false);
   let tw = Math.max(1, parseInt($("tW").value, 10) || src.width);
   let th = Math.max(1, parseInt($("tH").value, 10) || src.height);
   const rot = parseInt($("tRot").value, 10) || 0;
@@ -505,7 +552,7 @@ async function runTransform() {
     out = o;
   }
   const blob = await canvasBlob(out, "image/png");
-  await finishImage(blob, `${stem(srcName())}-edited.png`, `${out.width}×${out.height}px · PNG`);
+  return { kind: "image", blob, name: `${stem(file.name)}-edited.png`, meta: `${out.width}×${out.height}px · PNG` };
 }
 
 async function runCrop() {
@@ -519,9 +566,9 @@ async function runCrop() {
   await finishImage(blob, `${stem(srcName())}-crop.png`, `${w}×${h}px · PNG`);
 }
 
-async function runCompress() {
+async function eachCompress(file) {
   const key = $("cFmt").value, fmt = CONVERT_FORMATS[key];
-  let { canvas } = await currentCanvas(!fmt.alpha);
+  let { canvas } = await canvasFromFile(file, !fmt.alpha);
   if ($("cMax").checked) {
     const max = Math.max(100, parseInt($("cMaxPx").value, 10) || 1920);
     const scale = Math.min(1, max / Math.max(canvas.width, canvas.height));
@@ -537,8 +584,8 @@ async function runCompress() {
   } else {
     blob = await canvasBlob(canvas, fmt.mime, (parseInt($("cQ").value, 10) || 75) / 100);
   }
-  const saved = state.file.size ? Math.max(0, Math.round((1 - blob.size / state.file.size) * 100)) : 0;
-  await finishImage(blob, `${stem(srcName())}-min.${fmt.ext}`, `${canvas.width}×${canvas.height}px · ${prettySize(blob.size)} (−${saved}% from ${prettySize(state.file.size)})`);
+  const saved = file.size ? Math.max(0, Math.round((1 - blob.size / file.size) * 100)) : 0;
+  return { kind: "image", blob, name: `${stem(file.name)}-min.${fmt.ext}`, meta: `${canvas.width}×${canvas.height}px · ${prettySize(blob.size)} (−${saved}% from ${prettySize(file.size)})` };
 }
 
 async function runPixelate() {
@@ -561,8 +608,8 @@ async function runPixelate() {
   await finishImage(blob, `${stem(srcName())}-censored.png`, `${canvas.width}×${canvas.height}px · PNG`);
 }
 
-async function runWatermark() {
-  const { canvas } = await currentCanvas(false);
+async function eachWatermark(file) {
+  const { canvas } = await canvasFromFile(file, false);
   const ctx = canvas.getContext("2d");
   const text = $("wmText").value || "watermark";
   const size = Math.round((parseInt($("wmSize").value, 10) / 100) * Math.min(canvas.width, canvas.height));
@@ -583,20 +630,14 @@ async function runWatermark() {
     ctx.textAlign = "left"; ctx.fillText(text, px, py);
   }
   const blob = await canvasBlob(canvas, "image/png");
-  await finishImage(blob, `${stem(srcName())}-wm.png`, `${canvas.width}×${canvas.height}px · PNG`);
+  return { kind: "image", blob, name: `${stem(file.name)}-wm.png`, meta: `${canvas.width}×${canvas.height}px · PNG` };
 }
 
-async function runWmRemove() {
-  const sel = state.selection, passes = parseInt($("wrStr").value, 10) || 2;
-  const { canvas } = await currentCanvas(false);
-  const ctx = canvas.getContext("2d");
-  const W = canvas.width, H = canvas.height;
-  const x = Math.round(sel.x * W), y = Math.round(sel.y * H);
-  const w = Math.max(1, Math.round(sel.w * W)), h = Math.max(1, Math.round(sel.h * H));
-  setProgress(null, "Reconstructing region…");
-  await inpaint(ctx, W, H, x, y, w, h, passes);
-  const blob = await canvasBlob(canvas, "image/png");
-  await finishImage(blob, `${stem(srcName())}-clean.png`, `${W}×${H}px · PNG · region inpainted`, { compare: true });
+async function eachExif(file) {
+  const { canvas } = await canvasFromFile(file, false);
+  const isJpg = /jpe?g/i.test(file.type) || /\.jpe?g$/i.test(file.name);
+  const blob = await canvasBlob(canvas, isJpg ? "image/jpeg" : "image/png", isJpg ? 0.95 : undefined);
+  return { kind: "file", blob, name: `${stem(file.name)}-clean.${isJpg ? "jpg" : "png"}`, meta: `Cleaned copy · ${prettySize(blob.size)}` };
 }
 
 async function runExif() {
@@ -684,8 +725,8 @@ async function copyImage() {
 }
 
 // ═══════════════════════════ IMAGE / CANVAS HELPERS ═══════════════════════════
-async function currentCanvas(flattenWhite) {
-  const src = await decodeForCanvasIfNeeded(state.file);
+async function canvasFromFile(file, flattenWhite) {
+  const src = await decodeForCanvasIfNeeded(file);
   const bm = await loadBitmap(src);
   const c = el("canvas"); c.width = bm.width; c.height = bm.height;
   const ctx = c.getContext("2d");
@@ -693,6 +734,7 @@ async function currentCanvas(flattenWhite) {
   ctx.drawImage(bm, 0, 0);
   return { canvas: c, ctx, w: c.width, h: c.height };
 }
+const currentCanvas = (flattenWhite) => canvasFromFile(state.file, flattenWhite);
 
 function drawCover(ctx, bm, W, H) {
   const scale = Math.max(W / bm.width, H / bm.height);
@@ -701,30 +743,6 @@ function drawCover(ctx, bm, W, H) {
 }
 
 // Iterative diffusion inpaint of a rectangular region (best-effort).
-async function inpaint(ctx, W, H, x, y, w, h, passes) {
-  x = Math.max(1, x); y = Math.max(1, y); w = Math.min(w, W - x - 1); h = Math.min(h, H - y - 1);
-  if (w < 1 || h < 1) return;
-  const img = ctx.getImageData(0, 0, W, H), d = img.data;
-  // seed region with the average color of the surrounding ring
-  let rs = [0, 0, 0], n = 0;
-  for (let px = x - 1; px <= x + w; px++) { for (const py of [y - 1, y + h]) { const i = (py * W + px) * 4; rs[0] += d[i]; rs[1] += d[i + 1]; rs[2] += d[i + 2]; n++; } }
-  for (let py = y; py < y + h; py++) { for (const px of [x - 1, x + w]) { const i = (py * W + px) * 4; rs[0] += d[i]; rs[1] += d[i + 1]; rs[2] += d[i + 2]; n++; } }
-  rs = rs.map((v) => v / Math.max(1, n));
-  for (let py = y; py < y + h; py++) for (let px = x; px < x + w; px++) { const i = (py * W + px) * 4; d[i] = rs[0]; d[i + 1] = rs[1]; d[i + 2] = rs[2]; d[i + 3] = 255; }
-  // relax: each pixel becomes the average of its 4 neighbours (boundary stays fixed)
-  const iters = Math.min(600, Math.round(Math.max(w, h) * passes));
-  for (let k = 0; k < iters; k++) {
-    for (let py = y; py < y + h; py++) for (let px = x; px < x + w; px++) {
-      const i = (py * W + px) * 4, l = i - 4, r = i + 4, u = i - W * 4, dn = i + W * 4;
-      d[i] = (d[l] + d[r] + d[u] + d[dn]) >> 2;
-      d[i + 1] = (d[l + 1] + d[r + 1] + d[u + 1] + d[dn + 1]) >> 2;
-      d[i + 2] = (d[l + 2] + d[r + 2] + d[u + 2] + d[dn + 2]) >> 2;
-    }
-    if (k % 40 === 0) setProgress(Math.round((k / iters) * 100), `Reconstructing… ${Math.round((k / iters) * 100)}%`);
-  }
-  ctx.putImageData(img, 0, 0);
-}
-
 const canvasBlob = (canvas, mime, q) => new Promise((res, rej) => canvas.toBlob((b) => (b ? res(b) : rej(new Error(`Your browser can't export ${mime}.`))), mime, q));
 
 async function decodeForCanvasIfNeeded(file) {

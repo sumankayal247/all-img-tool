@@ -131,6 +131,30 @@ function acceptFiles(list) {
   if (state.imageURL) URL.revokeObjectURL(state.imageURL);
   state.imageURL = URL.createObjectURL(state.file);
   showUploadPreview();
+  // Clear the input so re-picking the SAME file fires `change` again.
+  fileInput.value = "";
+}
+
+function restoreDropzone() {
+  $("dzInner").innerHTML = `
+    <div class="dz-icon">⬆️</div>
+    <h2>Drop an image here</h2>
+    <p>or <button class="link" id="browseBtn">browse your files</button> · or paste (Ctrl/⌘+V)</p>
+    <p class="muted" id="dzFeature">Upload an image, then pick a feature on the left</p>`;
+  $("browseBtn").addEventListener("click", (e) => { e.stopPropagation(); fileInput.click(); });
+}
+
+// Full clean slate — used by "Start over" and when a run fails.
+function resetUpload() {
+  if (state.imageURL) URL.revokeObjectURL(state.imageURL);
+  _urls.splice(0).forEach((u) => { try { URL.revokeObjectURL(u); } catch {} });
+  state.files = []; state.file = null; state.imageURL = null;
+  state.feature = null; state.options = {}; state.selection = null;
+  state.outputBlob = null; state.copyText = null;
+  fileInput.value = "";
+  document.querySelectorAll(".feature").forEach((f) => f.classList.remove("active"));
+  restoreDropzone();
+  goto("upload");
 }
 
 function showUploadPreview() {
@@ -244,7 +268,7 @@ function setupSelector(cfg) {
 
 // ─────────────────────────── run dispatch ───────────────────────────
 $("runBtn").addEventListener("click", run);
-$("resetBtn").addEventListener("click", () => goto("upload"));
+$("resetBtn").addEventListener("click", resetUpload);
 $("errorBack").addEventListener("click", () => goto("confirm"));
 
 async function run() {
@@ -372,7 +396,8 @@ async function runRemoveBg() {
   setProgress(null, "Loading background-removal model…");
   const { removeBackground } = await import(`https://cdn.jsdelivr.net/npm/@imgly/background-removal@${CDN.imgly}/+esm`);
   const cfg = {
-    publicPath: `https://cdn.jsdelivr.net/npm/@imgly/background-removal@${CDN.imgly}/dist/`,
+    // Models live in the separate data package hosted on staticimgly (content-addressed chunks).
+    publicPath: `https://staticimgly.com/@imgly/background-removal-data/${CDN.imgly}/dist/`,
     progress: (key, cur, total) => { const pct = total ? Math.round((cur / total) * 100) : 0; setProgress(pct, key.startsWith("fetch") ? `Downloading model… ${pct}%` : `Processing… ${pct}%`); },
   };
   let blob = await removeBackground(state.file, cfg);

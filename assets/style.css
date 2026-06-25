@@ -122,6 +122,23 @@ body {
 }
 .filemeta { font-size: 12.5px; color: var(--muted); }
 
+/* drag-to-keep selector (background removal) */
+.selwrap {
+  position: relative; line-height: 0; cursor: crosshair;
+  border-radius: 10px; overflow: hidden; user-select: none;
+  touch-action: none;
+}
+.selwrap img {
+  width: 100%; height: auto; max-height: none; display: block;
+  background: repeating-conic-gradient(#202734 0% 25%, #1a212c 0% 50%) 50% / 20px 20px;
+}
+.selbox {
+  position: absolute; border: 2px solid var(--accent);
+  background: rgba(91,140,255,.12);
+  box-shadow: 0 0 0 9999px rgba(0,0,0,.45);
+  pointer-events: none;
+}
+
 .options-card h3 { font-size: 14px; margin-bottom: 4px; }
 .options-card label { display: block; font-size: 13px; color: var(--muted); margin: 16px 0 6px; }
 .field, select.field {

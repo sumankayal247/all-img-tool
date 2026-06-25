@@ -33,6 +33,7 @@ const state = {
   file: null, // original File
   imageURL: null, // object URL for preview
   options: {}, // per-feature options
+  selection: null, // normalized {x,y,w,h} object-to-keep box (removebg)
   outputBlob: null, // result blob (image or txt)
   outputName: "result",
 };
@@ -112,6 +113,24 @@ function acceptFile(file) {
 // ─────────────────────────── confirm / options page ───────────────────────────
 function buildConfirm() {
   $("confirmTitle").textContent = FEATURE_TITLES[state.feature];
+  state.options = {};
+  state.selection = null;
+
+  // ── Left: preview (interactive selector for background removal) ──
+  const pcard = $("previewCard");
+  if (state.feature === "removebg") {
+    pcard.innerHTML = `
+      <div class="selwrap" id="selwrap">
+        <img id="srcPreview" alt="preview" draggable="false" />
+        <div class="selbox hidden" id="selbox"></div>
+      </div>
+      <div class="filemeta" id="srcMeta"></div>`;
+  } else {
+    pcard.innerHTML = `
+      <img id="srcPreview" alt="preview" />
+      <div class="filemeta" id="srcMeta"></div>`;
+  }
+
   const img = $("srcPreview");
   img.src = state.imageURL;
   img.onload = () => {
@@ -124,15 +143,19 @@ function buildConfirm() {
   };
 
   const card = $("optionsCard");
-  state.options = {};
 
   if (state.feature === "removebg") {
     card.innerHTML = `
-      <h3>What will happen</h3>
-      <p class="note">The subject is detected automatically and the background is
-      erased, producing a transparent <b>PNG</b>. The first run downloads the AI
-      model (~40&nbsp;MB) and may take a moment.</p>`;
+      <h3>Select the object to keep</h3>
+      <p class="note"><b>Drag a box</b> on the image around the object you want to
+      keep — everything outside it is removed along with the background. Leave it
+      empty to keep whatever the AI detects across the whole image.</p>
+      <p class="note" id="selStatus">No selection — whole image.</p>
+      <button class="ghost" id="clearSel" style="margin-top:6px">Clear selection</button>
+      <p class="note">Output is a transparent <b>PNG</b>. The first run downloads the
+      AI model (~40&nbsp;MB) and may take a moment.</p>`;
     $("runBtn").textContent = "Remove Background";
+    setupSelector();
   }
 
   if (state.feature === "ocr") {
@@ -175,6 +198,88 @@ function buildConfirm() {
     q.addEventListener("input", syncQ);
     syncQ();
   }
+}
+
+// Interactive drag-to-box selector for "keep this object" (background removal).
+let _selGlobals = null; // { move, up } so we can detach on rebuild
+function setupSelector() {
+  // Detach any global listeners from a previous confirm screen.
+  if (_selGlobals) {
+    window.removeEventListener("mousemove", _selGlobals.move);
+    window.removeEventListener("mouseup", _selGlobals.up);
+  }
+  const wrap = $("selwrap");
+  const box = $("selbox");
+  const status = $("selStatus");
+  let dragging = false;
+  let start = null;
+
+  const clear = () => {
+    state.selection = null;
+    box.classList.add("hidden");
+    status.textContent = "No selection — whole image.";
+  };
+  $("clearSel").addEventListener("click", clear);
+
+  const pos = (e) => {
+    const r = wrap.getBoundingClientRect();
+    const cx = (e.touches ? e.touches[0].clientX : e.clientX) - r.left;
+    const cy = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+    return {
+      x: Math.max(0, Math.min(r.width, cx)),
+      y: Math.max(0, Math.min(r.height, cy)),
+      w: r.width,
+      h: r.height,
+    };
+  };
+
+  const down = (e) => {
+    e.preventDefault();
+    dragging = true;
+    start = pos(e);
+    box.classList.remove("hidden");
+    drawBox(start, start);
+  };
+  const move = (e) => {
+    if (!dragging) return;
+    e.preventDefault();
+    drawBox(start, pos(e));
+  };
+  const up = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    const end = pos(e.changedTouches ? e : e);
+    const cur = e.changedTouches ? pos({ touches: e.changedTouches }) : end;
+    finalize(start, cur);
+  };
+
+  const drawBox = (a, b) => {
+    const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+    const w = Math.abs(a.x - b.x), h = Math.abs(a.y - b.y);
+    box.style.left = x + "px";
+    box.style.top = y + "px";
+    box.style.width = w + "px";
+    box.style.height = h + "px";
+  };
+
+  const finalize = (a, b) => {
+    const cw = a.w, ch = a.h;
+    const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
+    const w = Math.abs(a.x - b.x), h = Math.abs(a.y - b.y);
+    if (w < 8 || h < 8) { clear(); return; } // too small => treat as no selection
+    state.selection = { x: x / cw, y: y / ch, w: w / cw, h: h / ch };
+    const pctW = Math.round(state.selection.w * 100);
+    const pctH = Math.round(state.selection.h * 100);
+    status.textContent = `Selected area: ${pctW}% × ${pctH}% of the image.`;
+  };
+
+  wrap.addEventListener("mousedown", down);
+  window.addEventListener("mousemove", move);
+  window.addEventListener("mouseup", up);
+  wrap.addEventListener("touchstart", down, { passive: false });
+  wrap.addEventListener("touchmove", move, { passive: false });
+  wrap.addEventListener("touchend", up);
+  _selGlobals = { move, up };
 }
 
 $("backBtn").addEventListener("click", () => goto("upload"));
@@ -220,15 +325,48 @@ async function runRemoveBg() {
       else setProgress(pct, `Processing… ${pct}%`);
     },
   };
-  const blob = await removeBackground(state.file, config);
+  let blob = await removeBackground(state.file, config);
+
+  // If the user boxed an object to keep, clear everything outside that box.
+  if (state.selection) {
+    setProgress(null, "Keeping selected object…");
+    blob = await cropToSelection(blob, state.selection);
+  }
+
   state.outputBlob = blob;
   state.outputName = `${stem(state.file.name)}-nobg.png`;
 
   const url = URL.createObjectURL(blob);
   const dims = await imgDims(url);
   $("resultTitle").textContent = "Background removed";
-  $("resultMeta").textContent = `${dims} · transparent PNG · ${prettySize(blob.size)}`;
+  $("resultMeta").textContent =
+    `${dims} · transparent PNG · ${prettySize(blob.size)}` +
+    (state.selection ? " · cropped to selection" : "");
   $("resultBody").innerHTML = `<img src="${url}" alt="result" />`;
+}
+
+// Given a transparent-PNG blob and a normalized box, erase everything outside it.
+async function cropToSelection(blob, sel) {
+  const bitmap = await loadBitmap(blob);
+  const w = bitmap.width, h = bitmap.height;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(bitmap, 0, 0);
+
+  const sx = Math.round(sel.x * w);
+  const sy = Math.round(sel.y * h);
+  const sw = Math.round(sel.w * w);
+  const sh = Math.round(sel.h * h);
+
+  // clearRect makes pixels fully transparent — wipe the four bands outside the box.
+  ctx.clearRect(0, 0, w, sy); // top
+  ctx.clearRect(0, sy + sh, w, h - (sy + sh)); // bottom
+  ctx.clearRect(0, sy, sx, sh); // left
+  ctx.clearRect(sx + sw, sy, w - (sx + sw), sh); // right
+
+  return await new Promise((res) => canvas.toBlob((b) => res(b), "image/png"));
 }
 
 // ── OCR ─────────────────────────────────────────────────────────────

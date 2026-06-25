@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>All Image Tool</title>
+  <meta name="description" content="Remove backgrounds, extract text (OCR), and convert image formats — all in your browser." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="assets/style.css" />
+</head>
+<body>
+  <div class="app">
+    <!-- ───────── Sidebar ───────── -->
+    <aside class="sidebar">
+      <div class="brand">
+        <span class="logo">◧</span>
+        <div>
+          <h1>All Image Tool</h1>
+          <p>One place for every image job</p>
+        </div>
+      </div>
+
+      <nav class="features" id="features">
+        <button class="feature" data-feature="removebg">
+          <span class="ic">✂️</span>
+          <span class="ftxt"><b>Remove Background</b><small>Make the background transparent</small></span>
+        </button>
+        <button class="feature" data-feature="ocr">
+          <span class="ic">🔤</span>
+          <span class="ftxt"><b>Extract Text (OCR)</b><small>Pull text out of an image</small></span>
+        </button>
+        <button class="feature" data-feature="convert">
+          <span class="ic">🔁</span>
+          <span class="ftxt"><b>Convert Format</b><small>Any format → PNG / JPG / WEBP</small></span>
+        </button>
+      </nav>
+
+      <div class="hint">
+        <p>Everything runs <b>in your browser</b> — your images never leave your device.</p>
+        <p class="muted">Pick a feature, then upload an image.</p>
+      </div>
+    </aside>
+
+    <!-- ───────── Main ───────── -->
+    <main class="main">
+      <!-- PAGE 1 — Upload -->
+      <section class="page" id="page-upload">
+        <div class="dropzone" id="dropzone">
+          <input type="file" id="fileInput" accept="image/*,.heic,.heif" hidden />
+          <div class="dz-inner">
+            <div class="dz-icon">⬆️</div>
+            <h2>Drop an image here</h2>
+            <p>or <button class="link" id="browseBtn">browse your files</button></p>
+            <p class="muted" id="dzFeature">First, pick a feature on the left</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- PAGE 2 — Confirm / arrange -->
+      <section class="page hidden" id="page-confirm">
+        <button class="back" id="backBtn">← Back</button>
+        <h2 id="confirmTitle">Review</h2>
+        <div class="confirm-grid">
+          <div class="preview-card">
+            <img id="srcPreview" alt="preview" />
+            <div class="filemeta" id="srcMeta"></div>
+          </div>
+          <div class="options-card" id="optionsCard"><!-- options injected by JS --></div>
+        </div>
+        <button class="primary" id="runBtn">Start</button>
+      </section>
+
+      <!-- PAGE 3 — Processing / result -->
+      <section class="page hidden" id="page-result">
+        <button class="back" id="resetBtn">← Start over</button>
+
+        <div class="working hidden" id="working">
+          <div class="spinner"></div>
+          <p id="workingText">Working…</p>
+          <div class="bar hidden" id="barWrap"><span id="bar"></span></div>
+        </div>
+
+        <div class="result hidden" id="resultBox">
+          <h2 id="resultTitle">Done</h2>
+          <p class="muted" id="resultMeta"></p>
+          <div class="result-body" id="resultBody"><!-- image or text --></div>
+          <button class="primary" id="downloadBtn">⬇ Download</button>
+        </div>
+
+        <div class="error hidden" id="errorBox">
+          <h2>Couldn't finish</h2>
+          <p id="errorText"></p>
+          <button class="ghost" id="errorBack">Try again</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="assets/app.js"></script>
+</body>
+</html>

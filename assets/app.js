@@ -26,7 +26,7 @@ const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls)
 const show = (e) => e.classList.remove("hidden");
 const hide = (e) => e.classList.add("hidden");
 
-const pages = { upload: $("page-upload"), confirm: $("page-confirm"), result: $("page-result") };
+const pages = { upload: $("page-upload"), confirm: $("page-confirm"), result: $("page-result"), format: $("page-format") };
 function goto(name) {
   Object.values(pages).forEach(hide);
   show(pages[name]);
@@ -75,6 +75,7 @@ const FEATURES = {
   watermark:{ group: "Cleanup",    icon: "💧", label: "Add Watermark",       sub: "Text overlay",          runLabel: "Add Watermark", build: optWatermark, run: runWatermark },
   wmremove: { group: "Cleanup",    icon: "🧽", label: "Remove Watermark",    sub: "Inpaint a region",      runLabel: "Remove", selector: { mode: "region", required: true }, build: optWmRemove, run: runWmRemove },
   exif:     { group: "Cleanup",    icon: "🛈",  label: "EXIF / Metadata",     sub: "View & strip metadata", runLabel: "Read & Clean", build: optExif, run: runExif },
+  formatter:{ group: "Code",       icon: "{ }", label: "Formatter",           sub: "Beautify HTML / JSON",  standalone: true, open: openFormatter },
 };
 
 // ─────────────────────────── build sidebar ───────────────────────────
@@ -101,11 +102,19 @@ const FEATURES = {
 $("features").addEventListener("click", (e) => {
   const btn = e.target.closest(".feature");
   if (!btn) return;
+  const def = FEATURES[btn.dataset.feature];
+  // Standalone features (Formatter) don't need an uploaded image.
+  if (def.standalone) {
+    document.querySelectorAll(".feature").forEach((f) => f.classList.remove("active"));
+    btn.classList.add("active");
+    state.feature = btn.dataset.feature;
+    def.open();
+    return;
+  }
   if (!state.files.length) { toast("Upload an image first.", "bad"); dz.classList.add("pulse"); setTimeout(() => dz.classList.remove("pulse"), 600); return; }
   document.querySelectorAll(".feature").forEach((f) => f.classList.remove("active"));
   btn.classList.add("active");
   state.feature = btn.dataset.feature;
-  const def = FEATURES[state.feature];
   if (!def.multi && state.files.length > 1) toast("Using the first uploaded image for this feature.", "");
   buildConfirm();
   goto("confirm");
@@ -738,6 +747,40 @@ function ensureScript(src, ready, label) {
   return new Promise((res, rej) => { const s = el("script"); s.src = src; s.onload = res; s.onerror = () => rej(new Error(`Failed to load the ${label}. Check your connection.`)); document.head.appendChild(s); });
 }
 
+// ═══════════════════════════ FORMATTER (HTML / JSON) ═══════════════════════════
+function openFormatter() { $("fmtMsg").textContent = ""; goto("format"); setTimeout(() => $("fmtArea").focus(), 0); }
+$("fmtBack").addEventListener("click", () => goto("upload"));
+$("fmtClear").addEventListener("click", () => { $("fmtArea").value = ""; $("fmtMsg").textContent = ""; $("fmtArea").focus(); });
+$("fmtCopy").addEventListener("click", () => { const v = $("fmtArea").value; if (!v.trim()) { toast("Nothing to copy.", "bad"); return; } copyText(v); });
+$("fmtRun").addEventListener("click", formatText);
+
+async function formatText() {
+  const ta = $("fmtArea");
+  const raw = ta.value;
+  if (!raw.trim()) { toast("Paste some HTML or JSON first.", "bad"); return; }
+
+  // 1) Try JSON first.
+  try {
+    const obj = JSON.parse(raw);
+    ta.value = JSON.stringify(obj, null, 2);
+    $("fmtMsg").textContent = "✓ Formatted as JSON.";
+    toast("Formatted as JSON", "good");
+    return;
+  } catch (_) { /* not JSON — fall through to HTML */ }
+
+  // 2) Otherwise beautify as HTML/XML.
+  try {
+    $("fmtMsg").textContent = "Formatting…";
+    await ensureScript(`https://cdn.jsdelivr.net/npm/js-beautify@1.15.1/js/lib/beautifier.min.js`, () => window.beautifier, "formatter");
+    ta.value = window.beautifier.html(raw, { indent_size: 2, wrap_line_length: 0, preserve_newlines: true, max_preserve_newlines: 2, end_with_newline: false });
+    $("fmtMsg").textContent = "✓ Formatted as HTML.";
+    toast("Formatted as HTML", "good");
+  } catch (err) {
+    $("fmtMsg").textContent = "Couldn't format: " + (err.message || err);
+    toast("Couldn't format the text", "bad");
+  }
+}
+
 // ═══════════════════════════ TOASTS / SHORTCUTS ═══════════════════════════
 function toast(msg, kind) {
   const t = el("div", "toast " + (kind || ""), msg);
@@ -749,7 +792,8 @@ document.addEventListener("keydown", (e) => {
   const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement?.tagName);
   if (e.key === "Enter" && !pages.confirm.classList.contains("hidden") && !typing) { e.preventDefault(); run(); }
   if (e.key === "Escape") {
-    if (!pages.confirm.classList.contains("hidden")) goto("upload");
+    if (!pages.format.classList.contains("hidden")) goto("upload");
+    else if (!pages.confirm.classList.contains("hidden")) goto("upload");
     else if (!pages.result.classList.contains("hidden")) goto("confirm");
   }
 });

@@ -79,6 +79,20 @@
           <button class="ghost" id="errorBack">Try again</button>
         </div>
       </section>
+
+      <!-- Standalone — Formatter (HTML / JSON) -->
+      <section class="page hidden" id="page-format">
+        <button class="back" id="fmtBack">← Back</button>
+        <h2>Formatter <span class="muted">— HTML / JSON</span></h2>
+        <p class="note">Paste messy HTML or JSON and hit <b>Format</b>. The type is detected automatically.</p>
+        <textarea id="fmtArea" class="fmt-area" spellcheck="false" placeholder="Paste your unformatted HTML or JSON here…"></textarea>
+        <div class="actions">
+          <button class="primary" id="fmtRun">✨ Format</button>
+          <button class="ghost" id="fmtCopy">📋 Copy</button>
+          <button class="ghost" id="fmtClear">🗑 Clear</button>
+        </div>
+        <p class="note" id="fmtMsg"></p>
+      </section>
     </main>
   </div>
 

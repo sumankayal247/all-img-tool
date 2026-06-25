@@ -219,6 +219,15 @@ input[type="range"].field { padding: 0; accent-color: var(--accent); }
 /* result actions row */
 .actions { display: flex; flex-wrap: wrap; gap: 10px; }
 
+/* formatter */
+.fmt-area {
+  width: 100%; min-height: 380px; resize: vertical; margin: 6px 0 16px;
+  background: var(--panel-2); border: 1px solid var(--line); color: var(--text);
+  border-radius: 12px; padding: 16px; tab-size: 2;
+  font: 13.5px/1.6 ui-monospace, "SF Mono", Menlo, monospace; white-space: pre;
+}
+.fmt-area:focus { outline: none; border-color: var(--accent); }
+
 /* before/after compare slider */
 .cmp { position: relative; display: inline-block; max-width: 100%; line-height: 0; border-radius: 12px; overflow: hidden; user-select: none; }
 .cmp img { display: block; max-width: 100%; max-height: 460px; }

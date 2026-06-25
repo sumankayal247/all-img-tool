@@ -23,6 +23,7 @@ no installs, no accounts, and **your images never leave your device**.
 | 💧 **Add Watermark** | Text overlay with size, opacity, color, 9-point position, or full tiling | Canvas |
 | 🧽 **Remove Watermark** | Best-effort inpainting of a boxed region (good on smooth backgrounds) | Canvas (diffusion inpaint) |
 | 🛈 **EXIF / Metadata** | View embedded camera/date/GPS metadata and download a stripped copy | [`exifr`](https://github.com/MikeKovarik/exifr) |
+| { } **Formatter** | Paste messy **HTML or JSON**, auto-detect the type and beautify it, with copy & clear (no image needed) | [`js-beautify`](https://github.com/beautifier/js-beautify) |
 
 ## How it works
 

@@ -19,6 +19,8 @@ const CDN = {
   jspdf: "2.5.1",
   exifr: "7.1.3",
   jszip: "3.10.1",
+  mammoth: "1.8.0",
+  html2canvas: "1.4.1",
 };
 
 // ─────────────────────────── tiny DOM helpers ───────────────────────────
@@ -27,7 +29,7 @@ const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls)
 const show = (e) => e.classList.remove("hidden");
 const hide = (e) => e.classList.add("hidden");
 
-const pages = { upload: $("page-upload"), confirm: $("page-confirm"), result: $("page-result"), format: $("page-format") };
+const pages = { upload: $("page-upload"), confirm: $("page-confirm"), result: $("page-result"), format: $("page-format"), doc2pdf: $("page-doc2pdf") };
 function goto(name) {
   Object.values(pages).forEach(hide);
   show(pages[name]);
@@ -78,6 +80,7 @@ const FEATURES = {
   watermark:{ group: "Cleanup",    icon: "💧", label: "Add Watermark",       sub: "Text overlay",          runLabel: "Add Watermark", build: optWatermark, each: eachWatermark },
   exif:     { group: "Cleanup",    icon: "🛈",  label: "EXIF / Metadata",     sub: "View & strip metadata", runLabel: "Read & Clean", build: optExif, run: runExif, each: eachExif },
   formatter:{ group: "Code",       icon: "{ }", label: "Formatter",           sub: "Beautify HTML / JSON",  standalone: true, open: openFormatter },
+  doctopdf: { group: "Document",   icon: "📃", label: "Doc/Docx → PDF",     sub: "Multi-upload · ZIP output", standalone: true, open: openDocToPdf },
 };
 
 // ─────────────────────────── build sidebar ───────────────────────────
@@ -799,6 +802,132 @@ async function formatText() {
   }
 }
 
+// ═══════════════════════════ DOC/DOCX → PDF (standalone, multi-upload → ZIP) ═══════════════════════════
+let docFiles = [];
+let docZipBlob = null;
+
+function openDocToPdf() {
+  docFiles = []; docZipBlob = null;
+  renderDocList();
+  hide($("docResultBox")); hide($("docErrorBox")); hide($("docWorking"));
+  goto("doc2pdf");
+}
+$("docBack").addEventListener("click", () => goto("upload"));
+$("docBrowseBtn").addEventListener("click", (e) => { e.stopPropagation(); $("docFileInput").click(); });
+$("docDropzone").addEventListener("click", () => $("docFileInput").click());
+["dragenter", "dragover"].forEach((ev) => $("docDropzone").addEventListener(ev, (e) => { e.preventDefault(); $("docDropzone").classList.add("drag"); }));
+["dragleave", "drop"].forEach((ev) => $("docDropzone").addEventListener(ev, (e) => { e.preventDefault(); $("docDropzone").classList.remove("drag"); }));
+$("docDropzone").addEventListener("drop", (e) => { if (e.dataTransfer.files.length) acceptDocFiles(e.dataTransfer.files); });
+$("docFileInput").addEventListener("change", () => { if ($("docFileInput").files.length) acceptDocFiles($("docFileInput").files); $("docFileInput").value = ""; });
+
+function acceptDocFiles(list) {
+  const picked = [...list].filter((f) => /\.(docx?|)$/i.test(f.name) && /\.(doc|docx)$/i.test(f.name));
+  if (!picked.length) { toast("Choose .doc or .docx files.", "bad"); return; }
+  docFiles.push(...picked);
+  hide($("docResultBox")); hide($("docErrorBox"));
+  renderDocList();
+}
+
+function renderDocList() {
+  const box = $("docList");
+  if (!docFiles.length) {
+    hide(box); box.innerHTML = "";
+    $("docDzMsg").textContent = "No files chosen yet";
+    $("docConvertBtn").disabled = true;
+    return;
+  }
+  show(box);
+  $("docDzMsg").textContent = `${docFiles.length} file${docFiles.length > 1 ? "s" : ""} ready`;
+  box.innerHTML = docFiles.map((f, i) => `
+    <div class="docrow">
+      <span class="docic">${/\.docx$/i.test(f.name) ? "📘" : "📄"}</span>
+      <span class="docname">${escapeHtml(f.name)}</span>
+      <span class="docsize muted">${prettySize(f.size)}</span>
+      <button class="trm" data-i="${i}" title="Remove">✕</button>
+    </div>`).join("");
+  $("docConvertBtn").disabled = false;
+}
+$("docList").addEventListener("click", (e) => {
+  const rm = e.target.closest(".trm");
+  if (!rm) return;
+  docFiles.splice(+rm.dataset.i, 1);
+  renderDocList();
+});
+$("docClearBtn").addEventListener("click", () => { docFiles = []; docZipBlob = null; renderDocList(); hide($("docResultBox")); hide($("docErrorBox")); });
+
+$("docConvertBtn").addEventListener("click", runDocToPdf);
+$("docDownloadBtn").addEventListener("click", () => {
+  if (!docZipBlob) return;
+  const url = URL.createObjectURL(docZipBlob);
+  const a = el("a"); a.href = url; a.download = "docs-to-pdf.zip"; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast("Downloaded docs-to-pdf.zip", "good");
+});
+
+async function runDocToPdf() {
+  if (!docFiles.length) return;
+  hide($("docResultBox")); hide($("docErrorBox")); show($("docWorking"));
+  $("docConvertBtn").disabled = true;
+  setDocProgress(0, "Preparing…");
+  try {
+    await ensureScript(`https://cdn.jsdelivr.net/npm/mammoth@${CDN.mammoth}/mammoth.browser.min.js`, () => window.mammoth, "Word document reader");
+    await ensureScript(`https://cdn.jsdelivr.net/npm/html2canvas@${CDN.html2canvas}/dist/html2canvas.min.js`, () => window.html2canvas, "PDF renderer");
+    await ensureScript(`https://cdn.jsdelivr.net/npm/jspdf@${CDN.jspdf}/dist/jspdf.umd.min.js`, () => window.jspdf, "PDF engine");
+    await ensureScript(`https://cdn.jsdelivr.net/npm/jszip@${CDN.jszip}/dist/jszip.min.js`, () => window.JSZip, "ZIP packer");
+
+    const zip = new window.JSZip();
+    const used = new Set();
+    const n = docFiles.length;
+    for (let i = 0; i < n; i++) {
+      const file = docFiles[i];
+      setDocProgress(Math.round((i / n) * 100), `Converting ${i + 1} of ${n}: ${file.name}…`);
+      if (!/\.docx$/i.test(file.name)) {
+        throw new Error(`"${file.name}" is an old-format .doc file, which can't be read in the browser. Re-save it as .docx (Word → Save As → .docx) and try again.`);
+      }
+      const pdfBlob = await docxFileToPdfBlob(file);
+      zip.file(uniqueName(`${stem(file.name)}.pdf`, used), pdfBlob);
+    }
+    setDocProgress(99, "Packing ZIP…");
+    docZipBlob = await zip.generateAsync({ type: "blob" });
+    hide($("docWorking"));
+    $("docResultMeta").textContent = `${n} PDF${n > 1 ? "s" : ""} · ${prettySize(docZipBlob.size)}`;
+    show($("docResultBox"));
+    toast(`Converted ${n} file${n > 1 ? "s" : ""} to PDF`, "good");
+  } catch (err) {
+    console.error(err);
+    hide($("docWorking"));
+    $("docErrorText").textContent = (err && err.message) || String(err);
+    show($("docErrorBox"));
+  } finally {
+    $("docConvertBtn").disabled = false;
+  }
+}
+
+async function docxFileToPdfBlob(file) {
+  const arrayBuffer = await file.arrayBuffer();
+  const { value: html } = await window.mammoth.convertToHtml({ arrayBuffer });
+  const container = el("div");
+  container.style.cssText = "position:fixed; left:-99999px; top:0; width:760px; padding:32px; background:#fff; color:#000; font-family:Georgia,serif; font-size:14px; line-height:1.5;";
+  container.innerHTML = html || "<p></p>";
+  document.body.appendChild(container);
+  try {
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ unit: "pt", format: "a4" });
+    await pdf.html(container, {
+      html2canvas: { scale: 0.75, useCORS: true },
+      margin: [40, 40, 40, 40],
+      autoPaging: "text",
+      width: 515,
+      windowWidth: 760,
+    });
+    return pdf.output("blob");
+  } finally {
+    container.remove();
+  }
+}
+
+function setDocProgress(pct, text) { $("docWorkingText").textContent = text; $("docBar").style.width = Math.max(0, Math.min(100, pct)) + "%"; }
+
 // ═══════════════════════════ TOASTS / SHORTCUTS ═══════════════════════════
 function toast(msg, kind) {
   const t = el("div", "toast " + (kind || ""), msg);
@@ -811,6 +940,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !pages.confirm.classList.contains("hidden") && !typing) { e.preventDefault(); run(); }
   if (e.key === "Escape") {
     if (!pages.format.classList.contains("hidden")) goto("upload");
+    else if (!pages.doc2pdf.classList.contains("hidden")) goto("upload");
     else if (!pages.confirm.classList.contains("hidden")) goto("upload");
     else if (!pages.result.classList.contains("hidden")) goto("confirm");
   }

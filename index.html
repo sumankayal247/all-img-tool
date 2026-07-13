@@ -93,6 +93,47 @@
         </div>
         <p class="note" id="fmtMsg"></p>
       </section>
+
+      <!-- Standalone — Doc/Docx → PDF (multi-upload, ZIP output) -->
+      <section class="page hidden" id="page-doc2pdf">
+        <button class="back" id="docBack">← Back</button>
+        <h2>Doc / Docx → PDF <span class="muted">— multi-upload, ZIP output</span></h2>
+        <p class="note">Upload one or more <b>.docx</b> files (old binary <b>.doc</b> isn't readable in-browser — re-save it as .docx first). Each file becomes its own PDF, then all of them are bundled into a single ZIP to download. Everything runs in your browser — files never leave your device.</p>
+
+        <div class="dropzone doc-dropzone" id="docDropzone">
+          <input type="file" id="docFileInput" accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document" multiple hidden />
+          <div class="dz-inner" id="docDzInner">
+            <div class="dz-icon">📃</div>
+            <h2>Drop .doc / .docx files here</h2>
+            <p>or <button class="link" id="docBrowseBtn">browse your files</button></p>
+            <p class="muted" id="docDzMsg">No files chosen yet</p>
+          </div>
+        </div>
+
+        <div class="doclist hidden" id="docList"></div>
+
+        <div class="actions" id="docActions">
+          <button class="primary" id="docConvertBtn" disabled>Convert to PDF</button>
+          <button class="ghost" id="docClearBtn">Clear all</button>
+        </div>
+
+        <div class="working hidden" id="docWorking">
+          <div class="spinner"></div>
+          <p id="docWorkingText">Working…</p>
+          <div class="bar" id="docBarWrap"><span id="docBar"></span></div>
+        </div>
+
+        <div class="result hidden" id="docResultBox">
+          <h2>Done</h2>
+          <p class="muted" id="docResultMeta"></p>
+          <div class="actions"><button class="primary" id="docDownloadBtn">⬇ Download ZIP</button></div>
+        </div>
+
+        <div class="error hidden" id="docErrorBox">
+          <h2>Couldn't finish</h2>
+          <p id="docErrorText"></p>
+        </div>
+      </section>
     </main>
   </div>
 

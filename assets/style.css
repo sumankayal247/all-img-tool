@@ -252,6 +252,23 @@ table.exif { width: 100%; border-collapse: collapse; font-size: 13px; }
 table.exif td { border-bottom: 1px solid var(--line); padding: 7px 8px; vertical-align: top; }
 table.exif td:first-child { color: var(--muted); width: 42%; }
 
+/* doc/docx -> pdf */
+.doc-dropzone { min-height: 220px; margin-bottom: 18px; }
+.doclist { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.docrow {
+  display: flex; align-items: center; gap: 12px;
+  background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 10px 12px;
+}
+.docic { font-size: 18px; }
+.docname { flex: 1; font-size: 13.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.docsize { font-size: 12px; flex-shrink: 0; }
+.docrow .trm {
+  position: static; width: 26px; height: 26px; border: none; border-radius: 8px;
+  background: var(--panel-2); color: var(--text); cursor: pointer; flex-shrink: 0;
+}
+.docrow .trm:hover { background: var(--bad); color: #fff; }
+
 /* toasts */
 .toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 10px; z-index: 50; }
 .toast {

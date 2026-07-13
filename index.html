@@ -134,6 +134,58 @@
           <p id="docErrorText"></p>
         </div>
       </section>
+
+      <!-- Standalone — Change Video Format (multi-upload, auto-detect, ZIP output) -->
+      <section class="page hidden" id="page-video2fmt">
+        <button class="back" id="vfBack">← Back</button>
+        <h2>Change Video Format <span class="muted">— MP4 · MOV · MKV · WebM · AVI</span></h2>
+        <p class="note">Upload one or more videos — each file's current format is <b>auto-detected</b>. Pick a target format below and convert. One video downloads directly; several are bundled into a ZIP. Runs entirely in your browser via WebAssembly (ffmpeg.wasm); the video engine (~30&nbsp;MB) downloads on first use, and conversion can take a while for large files.</p>
+
+        <div class="dropzone doc-dropzone" id="vfDropzone">
+          <input type="file" id="vfFileInput" accept="video/*,.mkv,.avi,.mov,.webm,.mp4,.m4v" multiple hidden />
+          <div class="dz-inner" id="vfDzInner">
+            <div class="dz-icon">🎬</div>
+            <h2>Drop video files here</h2>
+            <p>or <button class="link" id="vfBrowseBtn">browse your files</button></p>
+            <p class="muted" id="vfDzMsg">No files chosen yet</p>
+          </div>
+        </div>
+
+        <div class="doclist hidden" id="vfList"></div>
+
+        <div id="vfFormatRow" class="hidden" style="max-width:280px">
+          <label style="display:block;font-size:13px;color:var(--muted);margin:0 0 6px">Convert to</label>
+          <select class="field" id="vfFormat">
+            <option value="MP4">MP4</option>
+            <option value="MOV">MOV</option>
+            <option value="MKV">MKV</option>
+            <option value="WebM">WebM</option>
+            <option value="AVI">AVI</option>
+          </select>
+        </div>
+
+        <div class="actions" id="vfActions" style="margin-top:16px">
+          <button class="primary" id="vfConvertBtn" disabled>Convert</button>
+          <button class="ghost" id="vfClearBtn">Clear all</button>
+        </div>
+
+        <div class="working hidden" id="vfWorking">
+          <div class="spinner"></div>
+          <p id="vfWorkingText">Working…</p>
+          <div class="bar" id="vfBarWrap"><span id="vfBar"></span></div>
+        </div>
+
+        <div class="result hidden" id="vfResultBox">
+          <h2>Done</h2>
+          <p class="muted" id="vfResultMeta"></p>
+          <div class="actions"><button class="primary" id="vfDownloadBtn">⬇ Download</button></div>
+        </div>
+
+        <div class="error hidden" id="vfErrorBox">
+          <h2>Couldn't finish</h2>
+          <p id="vfErrorText"></p>
+        </div>
+      </section>
     </main>
   </div>
 

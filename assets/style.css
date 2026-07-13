@@ -268,6 +268,12 @@ table.exif td:first-child { color: var(--muted); width: 42%; }
   background: var(--panel-2); color: var(--text); cursor: pointer; flex-shrink: 0;
 }
 .docrow .trm:hover { background: var(--bad); color: #fff; }
+.fmtbadge {
+  font-size: 11px; font-weight: 600; letter-spacing: .02em;
+  background: rgba(91,140,255,.14); color: var(--accent-2);
+  border: 1px solid rgba(91,140,255,.35); border-radius: 6px;
+  padding: 2px 8px; flex-shrink: 0;
+}
 
 /* toasts */
 .toasts { position: fixed; right: 18px; bottom: 18px; display: flex; flex-direction: column; gap: 10px; z-index: 50; }

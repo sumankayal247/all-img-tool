@@ -21,6 +21,8 @@ const CDN = {
   jszip: "3.10.1",
   mammoth: "1.8.0",
   html2canvas: "1.4.1",
+  ffmpeg: "0.12.10",
+  ffmpegCore: "0.12.6",
 };
 
 // ─────────────────────────── tiny DOM helpers ───────────────────────────
@@ -29,7 +31,7 @@ const el = (tag, cls, html) => { const e = document.createElement(tag); if (cls)
 const show = (e) => e.classList.remove("hidden");
 const hide = (e) => e.classList.add("hidden");
 
-const pages = { upload: $("page-upload"), confirm: $("page-confirm"), result: $("page-result"), format: $("page-format"), doc2pdf: $("page-doc2pdf") };
+const pages = { upload: $("page-upload"), confirm: $("page-confirm"), result: $("page-result"), format: $("page-format"), doc2pdf: $("page-doc2pdf"), video2fmt: $("page-video2fmt") };
 function goto(name) {
   Object.values(pages).forEach(hide);
   show(pages[name]);
@@ -81,6 +83,7 @@ const FEATURES = {
   exif:     { group: "Cleanup",    icon: "🛈",  label: "EXIF / Metadata",     sub: "View & strip metadata", runLabel: "Read & Clean", build: optExif, run: runExif, each: eachExif },
   formatter:{ group: "Code",       icon: "{ }", label: "Formatter",           sub: "Beautify HTML / JSON",  standalone: true, open: openFormatter },
   doctopdf: { group: "Document",   icon: "📃", label: "Doc/Docx → PDF",     sub: "Multi-upload · ZIP output", standalone: true, open: openDocToPdf },
+  videofmt: { group: "Video",      icon: "🎬", label: "Change Video Format", sub: "MP4 · MOV · MKV · WebM · AVI", standalone: true, open: openVideoFormat },
 };
 
 // ─────────────────────────── build sidebar ───────────────────────────
@@ -928,6 +931,207 @@ async function docxFileToPdfBlob(file) {
 
 function setDocProgress(pct, text) { $("docWorkingText").textContent = text; $("docBar").style.width = Math.max(0, Math.min(100, pct)) + "%"; }
 
+// ═══════════════════════════ CHANGE VIDEO FORMAT (standalone, multi-upload → auto-detect → ZIP) ═══════════════════════════
+const VIDEO_FORMATS = {
+  MP4:  { ext: "mp4",  mime: "video/mp4",       args: ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k"] },
+  MOV:  { ext: "mov",  mime: "video/quicktime", args: ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k"] },
+  MKV:  { ext: "mkv",  mime: "video/x-matroska",args: ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23", "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "160k"] },
+  WebM: { ext: "webm", mime: "video/webm",      args: ["-c:v", "libvpx", "-crf", "10", "-b:v", "1M", "-c:a", "libvorbis"] },
+  AVI:  { ext: "avi",  mime: "video/x-msvideo", args: ["-c:v", "mpeg4", "-qscale:v", "5", "-c:a", "libmp3lame", "-qscale:a", "4"] },
+};
+const VIDEO_EXT_MAP = { mp4: "MP4", m4v: "MP4", mov: "MOV", qt: "MOV", mkv: "MKV", webm: "WebM", avi: "AVI" };
+
+function detectVideoFormat(file) {
+  const ext = (file.name.split(".").pop() || "").toLowerCase();
+  if (VIDEO_EXT_MAP[ext]) return VIDEO_EXT_MAP[ext];
+  const mime = file.type || "";
+  if (/mp4/.test(mime)) return "MP4";
+  if (/quicktime/.test(mime)) return "MOV";
+  if (/webm/.test(mime)) return "WebM";
+  if (/matroska/.test(mime)) return "MKV";
+  if (/x-msvideo/.test(mime)) return "AVI";
+  return "Unknown";
+}
+
+let vfFiles = [];
+let vfOutputBlob = null;
+let vfOutputName = null;
+let _ffmpeg = null;
+
+function openVideoFormat() {
+  vfFiles = []; vfOutputBlob = null; vfOutputName = null;
+  renderVfList();
+  hide($("vfResultBox")); hide($("vfErrorBox")); hide($("vfWorking"));
+  goto("video2fmt");
+}
+$("vfBack").addEventListener("click", () => goto("upload"));
+$("vfBrowseBtn").addEventListener("click", (e) => { e.stopPropagation(); $("vfFileInput").click(); });
+$("vfDropzone").addEventListener("click", () => $("vfFileInput").click());
+["dragenter", "dragover"].forEach((ev) => $("vfDropzone").addEventListener(ev, (e) => { e.preventDefault(); $("vfDropzone").classList.add("drag"); }));
+["dragleave", "drop"].forEach((ev) => $("vfDropzone").addEventListener(ev, (e) => { e.preventDefault(); $("vfDropzone").classList.remove("drag"); }));
+$("vfDropzone").addEventListener("drop", (e) => { if (e.dataTransfer.files.length) acceptVfFiles(e.dataTransfer.files); });
+$("vfFileInput").addEventListener("change", () => { if ($("vfFileInput").files.length) acceptVfFiles($("vfFileInput").files); $("vfFileInput").value = ""; });
+
+const isVideo = (f) => /^video\//.test(f.type) || /\.(mp4|m4v|mov|qt|mkv|webm|avi)$/i.test(f.name);
+
+function acceptVfFiles(list) {
+  const picked = [...list].filter(isVideo);
+  if (!picked.length) { toast("Choose video files.", "bad"); return; }
+  vfFiles.push(...picked);
+  hide($("vfResultBox")); hide($("vfErrorBox"));
+  renderVfList();
+}
+
+function renderVfList() {
+  const box = $("vfList");
+  if (!vfFiles.length) {
+    hide(box); box.innerHTML = "";
+    hide($("vfFormatRow"));
+    $("vfDzMsg").textContent = "No files chosen yet";
+    $("vfConvertBtn").disabled = true;
+    return;
+  }
+  show(box); show($("vfFormatRow"));
+  $("vfDzMsg").textContent = `${vfFiles.length} file${vfFiles.length > 1 ? "s" : ""} ready`;
+  box.innerHTML = vfFiles.map((f, i) => `
+    <div class="docrow">
+      <span class="docic">🎞️</span>
+      <span class="docname">${escapeHtml(f.name)}</span>
+      <span class="fmtbadge">${detectVideoFormat(f)}</span>
+      <span class="docsize muted">${prettySize(f.size)}</span>
+      <button class="trm" data-i="${i}" title="Remove">✕</button>
+    </div>`).join("");
+  $("vfConvertBtn").disabled = false;
+}
+$("vfList").addEventListener("click", (e) => {
+  const rm = e.target.closest(".trm");
+  if (!rm) return;
+  vfFiles.splice(+rm.dataset.i, 1);
+  renderVfList();
+});
+$("vfClearBtn").addEventListener("click", () => { vfFiles = []; vfOutputBlob = null; renderVfList(); hide($("vfResultBox")); hide($("vfErrorBox")); });
+
+$("vfConvertBtn").addEventListener("click", runVideoFormat);
+$("vfDownloadBtn").addEventListener("click", () => {
+  if (!vfOutputBlob) return;
+  const url = URL.createObjectURL(vfOutputBlob);
+  const a = el("a"); a.href = url; a.download = vfOutputName; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  toast("Downloaded " + vfOutputName, "good");
+});
+
+async function ensureFfmpeg() {
+  if (_ffmpeg) return _ffmpeg;
+  setVfProgress(0, "Loading video engine (~30 MB, first time only)…");
+  const { FFmpeg } = await import(`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${CDN.ffmpeg}/+esm`);
+  const ff = new FFmpeg();
+  const base = `https://cdn.jsdelivr.net/npm/@ffmpeg/core@${CDN.ffmpegCore}/dist/esm`;
+  ff.on("progress", ({ progress }) => { _vfLastFrac = Number.isFinite(progress) ? Math.max(0, Math.min(1, progress)) : _vfLastFrac; });
+  ff.on("log", ({ message }) => console.debug("[ffmpeg]", message));
+  await ff.load({
+    coreURL: await vfBlobURL(`${base}/ffmpeg-core.js`, "text/javascript"),
+    wasmURL: await vfBlobURL(`${base}/ffmpeg-core.wasm`, "application/wasm"),
+    classWorkerURL: await vfWorkerBlobURL(`https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@${CDN.ffmpeg}/dist/esm/worker.js`),
+  });
+  _ffmpeg = ff;
+  return ff;
+}
+async function vfBlobURL(url, mime) {
+  const buf = await (await fetch(url)).arrayBuffer();
+  return URL.createObjectURL(new Blob([buf], { type: mime }));
+}
+// Blob-wrapped workers lose their directory context, so this module's relative
+// `from "./x.js"` imports must be rewritten to absolute CDN URLs first.
+async function vfWorkerBlobURL(url) {
+  const dir = url.slice(0, url.lastIndexOf("/") + 1);
+  const src = (await (await fetch(url)).text()).replace(/from\s+(["'])\.\/([^"']+)\1/g, (_, q, rel) => `from ${q}${dir}${rel}${q}`);
+  return URL.createObjectURL(new Blob([src], { type: "text/javascript" }));
+}
+
+let _vfLastFrac = 0;
+async function convertOneVideo(ff, file, i, targetKey) {
+  const fmt = VIDEO_FORMATS[targetKey];
+  const inName = `in_${i}.${(file.name.split(".").pop() || "bin").toLowerCase()}`;
+  const outName = `out_${i}.${fmt.ext}`;
+  _vfLastFrac = 0;
+  await ff.writeFile(inName, new Uint8Array(await file.arrayBuffer()));
+  try {
+    await ff.exec(["-i", inName, ...fmt.args, outName]);
+    const data = await ff.readFile(outName);
+    if (!data || !data.length) throw new Error("empty output");
+    return new Blob([data.buffer], { type: fmt.mime });
+  } catch (err) {
+    console.error("ffmpeg convert failed:", err);
+    throw new Error(`Couldn't convert "${file.name}" — its codec may not be supported by the in-browser engine. (${(err && err.message) || err})`);
+  } finally {
+    try { await ff.deleteFile(inName); } catch (_) {}
+    try { await ff.deleteFile(outName); } catch (_) {}
+  }
+}
+
+async function runVideoFormat() {
+  if (!vfFiles.length) return;
+  hide($("vfResultBox")); hide($("vfErrorBox")); show($("vfWorking"));
+  $("vfConvertBtn").disabled = true;
+  setVfProgress(0, "Preparing…");
+  const targetKey = $("vfFormat").value;
+  const n = vfFiles.length;
+  try {
+    const ff = await ensureFfmpeg();
+    const zip = n > 1 ? new (await loadJSZip())() : null;
+    const used = new Set();
+    let single = null;
+    for (let i = 0; i < n; i++) {
+      const file = vfFiles[i];
+      const srcFmt = detectVideoFormat(file);
+      const base = `${i}-of-${n}`;
+      let blob, outName;
+      if (srcFmt === targetKey) {
+        setVfProgress(Math.round((i / n) * 100), `${file.name} is already ${targetKey} — copying (${i + 1} of ${n})…`);
+        blob = file;
+        outName = file.name;
+      } else {
+        outName = `${stem(file.name)}.${VIDEO_FORMATS[targetKey].ext}`;
+        const progTimer = setInterval(() => {
+          const pct = Math.round(((i + _vfLastFrac) / n) * 100);
+          setVfProgress(pct, `Converting ${i + 1} of ${n}: ${file.name} → ${targetKey}…`);
+        }, 250);
+        try { blob = await convertOneVideo(ff, file, i, targetKey); }
+        finally { clearInterval(progTimer); }
+      }
+      if (zip) zip.file(uniqueName(outName, used), blob);
+      else single = { blob, name: outName };
+    }
+    setVfProgress(99, zip ? "Packing ZIP…" : "Finishing…");
+    if (zip) {
+      vfOutputBlob = await zip.generateAsync({ type: "blob" });
+      vfOutputName = "videos-converted.zip";
+      $("vfResultMeta").textContent = `${n} video${n > 1 ? "s" : ""} · ${prettySize(vfOutputBlob.size)}`;
+    } else {
+      vfOutputBlob = single.blob;
+      vfOutputName = single.name;
+      $("vfResultMeta").textContent = `${vfOutputName} · ${prettySize(vfOutputBlob.size)}`;
+    }
+    hide($("vfWorking"));
+    show($("vfResultBox"));
+    toast(`Converted ${n} video${n > 1 ? "s" : ""} to ${targetKey}`, "good");
+  } catch (err) {
+    console.error(err);
+    hide($("vfWorking"));
+    $("vfErrorText").textContent = (err && err.message) || String(err);
+    show($("vfErrorBox"));
+  } finally {
+    $("vfConvertBtn").disabled = false;
+  }
+}
+
+async function loadJSZip() {
+  await ensureScript(`https://cdn.jsdelivr.net/npm/jszip@${CDN.jszip}/dist/jszip.min.js`, () => window.JSZip, "ZIP packer");
+  return window.JSZip;
+}
+
+function setVfProgress(pct, text) { $("vfWorkingText").textContent = text; $("vfBar").style.width = Math.max(0, Math.min(100, pct)) + "%"; }
+
 // ═══════════════════════════ TOASTS / SHORTCUTS ═══════════════════════════
 function toast(msg, kind) {
   const t = el("div", "toast " + (kind || ""), msg);
@@ -941,6 +1145,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     if (!pages.format.classList.contains("hidden")) goto("upload");
     else if (!pages.doc2pdf.classList.contains("hidden")) goto("upload");
+    else if (!pages.video2fmt.classList.contains("hidden")) goto("upload");
     else if (!pages.confirm.classList.contains("hidden")) goto("upload");
     else if (!pages.result.classList.contains("hidden")) goto("confirm");
   }

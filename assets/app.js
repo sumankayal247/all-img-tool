@@ -20,7 +20,6 @@ const CDN = {
   exifr: "7.1.3",
   jszip: "3.10.1",
   mammoth: "1.8.0",
-  html2canvas: "1.4.1",
   ffmpeg: "0.12.10",
   ffmpegCore: "0.12.6",
 };
@@ -874,7 +873,6 @@ async function runDocToPdf() {
   setDocProgress(0, "Preparing…");
   try {
     await ensureScript(`https://cdn.jsdelivr.net/npm/mammoth@${CDN.mammoth}/mammoth.browser.min.js`, () => window.mammoth, "Word document reader");
-    await ensureScript(`https://cdn.jsdelivr.net/npm/html2canvas@${CDN.html2canvas}/dist/html2canvas.min.js`, () => window.html2canvas, "PDF renderer");
     await ensureScript(`https://cdn.jsdelivr.net/npm/jspdf@${CDN.jspdf}/dist/jspdf.umd.min.js`, () => window.jspdf, "PDF engine");
     await ensureScript(`https://cdn.jsdelivr.net/npm/jszip@${CDN.jszip}/dist/jszip.min.js`, () => window.JSZip, "ZIP packer");
 
@@ -906,27 +904,56 @@ async function runDocToPdf() {
   }
 }
 
+// Draws the document's paragraphs/headings/lists straight into the PDF with jsPDF's
+// text APIs. (An earlier html2canvas-screenshot approach silently produced blank
+// pages: it rendered the source DOM off-screen at left:-99999px, and html2canvas
+// can't rasterize content that far outside a canvas's real coordinate limits.)
 async function docxFileToPdfBlob(file) {
   const arrayBuffer = await file.arrayBuffer();
   const { value: html } = await window.mammoth.convertToHtml({ arrayBuffer });
-  const container = el("div");
-  container.style.cssText = "position:fixed; left:-99999px; top:0; width:760px; padding:32px; background:#fff; color:#000; font-family:Georgia,serif; font-size:14px; line-height:1.5;";
-  container.innerHTML = html || "<p></p>";
-  document.body.appendChild(container);
-  try {
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ unit: "pt", format: "a4" });
-    await pdf.html(container, {
-      html2canvas: { scale: 0.75, useCORS: true },
-      margin: [40, 40, 40, 40],
-      autoPaging: "text",
-      width: 515,
-      windowWidth: 760,
-    });
-    return pdf.output("blob");
-  } finally {
-    container.remove();
+  const doc = new DOMParser().parseFromString(html || "<p></p>", "text/html");
+  const blocks = [...doc.body.children];
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: "pt", format: "a4" });
+  const margin = 48;
+  const pageW = pdf.internal.pageSize.getWidth();
+  const pageH = pdf.internal.pageSize.getHeight();
+  const maxWidth = pageW - margin * 2;
+  let y = margin;
+
+  const HEADING_SIZE = { H1: 20, H2: 17, H3: 15, H4: 13, H5: 12, H6: 12 };
+  const ensureSpace = (needed) => { if (y + needed > pageH - margin) { pdf.addPage(); y = margin; } };
+  const writeLine = (text, { size = 12, bold = false } = {}) => {
+    pdf.setFont("helvetica", bold ? "bold" : "normal");
+    pdf.setFontSize(size);
+    const lineHeight = size * 1.35;
+    for (const line of pdf.splitTextToSize(text, maxWidth)) { ensureSpace(lineHeight); pdf.text(line, margin, y); y += lineHeight; }
+  };
+
+  let wroteAny = false;
+  for (const node of blocks.length ? blocks : [doc.body]) {
+    const tag = node.tagName;
+    if (tag === "UL" || tag === "OL") {
+      for (const li of node.querySelectorAll(":scope > li")) {
+        const t = (li.textContent || "").replace(/\s+/g, " ").trim();
+        if (!t) continue;
+        wroteAny = true;
+        writeLine("•  " + t, { size: 12 });
+        y += 4;
+      }
+      y += 6;
+      continue;
+    }
+    const text = (node.textContent || "").replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    wroteAny = true;
+    if (/^H[1-6]$/.test(tag)) { writeLine(text, { size: HEADING_SIZE[tag], bold: true }); y += 12; }
+    else { writeLine(text, { size: 12 }); y += 10; }
   }
+  if (!wroteAny) writeLine("(This document appears to be empty.)", { size: 12 });
+
+  return pdf.output("blob");
 }
 
 function setDocProgress(pct, text) { $("docWorkingText").textContent = text; $("docBar").style.width = Math.max(0, Math.min(100, pct)) + "%"; }
